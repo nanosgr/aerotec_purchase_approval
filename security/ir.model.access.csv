@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_approval_rule_manager,Regla Aprobación: Admin Contabilidad,aerotec_purchase_approval.model_aerotec_approval_rule,account.group_account_manager,1,1,1,1
+access_approval_rule_invoice_user,Regla Aprobación: Usuario Contabilidad,aerotec_purchase_approval.model_aerotec_approval_rule,account.group_account_invoice,1,0,0,0
+access_approval_rule_user,Regla Aprobación: Usuario interno,aerotec_purchase_approval.model_aerotec_approval_rule,base.group_user,1,0,0,0

@@ -1,0 +1,21 @@
+{
+    "name": "Aerotec - Aprobación de Compras",
+    "version": "18.0.1.0.0",
+    "category": "Accounting/Accounting",
+    "summary": "Autorización por monto en facturas de proveedor y pagos, y gestión de productos por proveedor",
+    "author": "Sebastian Rios",
+    "license": "LGPL-3",
+    "depends": ["account", "purchase", "mail"],
+    "data": [
+        "security/security.xml",
+        "security/ir.model.access.csv",
+        "views/aerotec_approval_rule_views.xml",
+        "views/account_move_views_inherit.xml",
+        "views/account_payment_views_inherit.xml",
+        "views/res_partner_views_inherit.xml",
+        "views/purchase_order_views_inherit.xml",
+        "views/menus.xml",
+    ],
+    "installable": True,
+    "auto_install": False,
+}

@@ -1,0 +1,47 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Bytecode Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Pytest / cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Alembic (versiones generadas localmente si aplica)
+# alembic/versions/*.py  # descomentar si se prefiere no versionar migraciones
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Distribución / empaquetado
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Docker
+docker-compose.override.yml
+docker-compose-dev.yml
+
+# Backups
+*.sql

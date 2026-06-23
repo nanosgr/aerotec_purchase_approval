@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_partner_form_inherit_supplier_products" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit.supplier.products</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Pestaña de productos autorizados, visible solo para proveedores -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Productos autorizados"
+                    invisible="supplier_rank == 0"
+                    name="supplier_products">
+                    <field name="supplier_product_ids"
+                        widget="many2many_tags"
+                        options="{'no_create': True}"
+                        domain="[('purchase_ok', '=', True)]">
+                        <list>
+                            <field name="name"/>
+                            <field name="categ_id"/>
+                            <field name="uom_id"/>
+                        </list>
+                    </field>
+                    <div class="text-muted mt-2">
+                        Si no se selecciona ningún producto, este proveedor podrá
+                        incluirse en órdenes de compra con cualquier producto.
+                    </div>
+                </page>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>

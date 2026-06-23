@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Menú bajo Contabilidad > Configuración -->
+    <menuitem
+        id="menu_approval_rules"
+        name="Reglas de Autorización de Compras"
+        parent="account.menu_finance_configuration"
+        action="action_approval_rule"
+        sequence="50"
+        groups="account.group_account_manager"/>
+
+</odoo>

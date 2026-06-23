@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_approval_rule_list" model="ir.ui.view">
+        <field name="name">aerotec.approval.rule.list</field>
+        <field name="model">aerotec.approval.rule</field>
+        <field name="arch" type="xml">
+            <list string="Reglas de Autorización" editable="top">
+                <field name="user_id"/>
+                <field name="approval_type"/>
+                <field name="max_amount"/>
+                <field name="currency_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_approval_rule_form" model="ir.ui.view">
+        <field name="name">aerotec.approval.rule.form</field>
+        <field name="model">aerotec.approval.rule</field>
+        <field name="arch" type="xml">
+            <form string="Regla de Autorización">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Autorizador">
+                            <field name="user_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Límite de autorización">
+                            <field name="approval_type"/>
+                            <field name="max_amount"/>
+                            <field name="currency_id"/>
+                        </group>
+                    </group>
+                    <group string="Descripción del comportamiento">
+                        <div class="text-muted" colspan="2">
+                            Este usuario podrá autorizar comprobantes cuyo monto, convertido a
+                            la moneda del tope, no supere el monto máximo configurado.
+                            Si el monto supera el tope, se buscará el siguiente autorizador
+                            con límite mayor.
+                        </div>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_approval_rule_search" model="ir.ui.view">
+        <field name="name">aerotec.approval.rule.search</field>
+        <field name="model">aerotec.approval.rule</field>
+        <field name="arch" type="xml">
+            <search string="Buscar reglas de autorización">
+                <field name="user_id"/>
+                <separator/>
+                <filter string="Facturas" name="invoice"
+                    domain="[('approval_type', 'in', ['invoice', 'both'])]"/>
+                <filter string="Pagos" name="payment"
+                    domain="[('approval_type', 'in', ['payment', 'both'])]"/>
+                <separator/>
+                <filter string="Archivadas" name="inactive"
+                    domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Usuario" name="group_user"
+                        context="{'group_by': 'user_id'}"/>
+                    <filter string="Tipo" name="group_type"
+                        context="{'group_by': 'approval_type'}"/>
+                    <filter string="Empresa" name="group_company"
+                        context="{'group_by': 'company_id'}"
+                        groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_approval_rule" model="ir.actions.act_window">
+        <field name="name">Reglas de Autorización de Compras</field>
+        <field name="res_model">aerotec.approval.rule</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_approval_rule_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay reglas de autorización configuradas
+            </p>
+            <p>
+                Cree reglas para definir qué usuario debe aprobar facturas y pagos
+                según el monto del comprobante. Cada usuario tiene un monto máximo
+                que puede autorizar.
+            </p>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- No se define un grupo estático de aprobadores: el autorizador se determina
+         dinámicamente por la regla que corresponda al monto del comprobante. -->
+
+</odoo>
