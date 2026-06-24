@@ -12,7 +12,6 @@ class AccountMoveLine(models.Model):
     @api.depends(
         "product_id",
         "move_id.partner_id",
-        "move_id.company_id",
         "move_id.move_type",
     )
     def _compute_product_auth_warning(self):
@@ -26,13 +25,10 @@ class AccountMoveLine(models.Model):
                 or not line.move_id.partner_id
             ):
                 continue
-            key = (line.move_id.partner_id.id, line.move_id.company_id.id)
+            key = line.move_id.partner_id.id
             if key not in config_cache:
                 config = SupplierProduct.search(
-                    [
-                        ("partner_id", "=", key[0]),
-                        ("company_id", "=", key[1]),
-                    ],
+                    [("partner_id", "=", key)],
                     limit=1,
                 )
                 config_cache[key] = config.product_ids if config else None

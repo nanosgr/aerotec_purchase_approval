@@ -7,16 +7,12 @@
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
 
-            <!-- Pestaña de productos autorizados, visible solo para proveedores -->
+            <!-- Pestaña de productos relacionados, visible solo para proveedores -->
             <xpath expr="//notebook" position="inside">
                 <page string="Productos relacionados" invisible="supplier_rank == 0">
                     <field name="aerotec_supplier_product_ids"
-                           context="{
-                               'default_partner_id': id,
-                               'default_company_id': current_company_id
-                           }">
+                           context="{'default_partner_id': id}">
                         <list editable="bottom">
-                            <field name="company_id" groups="base.group_multi_company"/>
                             <field name="product_ids" widget="many2many_tags"
                                    options="{'no_create_edit': True}"/>
                         </list>
