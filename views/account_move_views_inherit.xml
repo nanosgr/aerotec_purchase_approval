@@ -89,12 +89,14 @@
                 </group>
             </xpath>
 
-            <!-- Columna de advertencia de producto no autorizado en líneas de factura -->
-            <xpath expr="//field[@name='invoice_line_ids']//field[@name='product_id']" position="after">
-                <field name="product_auth_warning"
-                       optional="hide"
-                       readonly="1"
-                       string="Autorización"/>
+            <!-- Campo de dominio oculto para filtrar productos según proveedor -->
+            <xpath expr="//field[@name='invoice_line_ids']//field[@name='product_id']" position="before">
+                <field name="product_id_domain" column_invisible="1"/>
+            </xpath>
+
+            <!-- Aplicar el dominio calculado al selector de producto -->
+            <xpath expr="//field[@name='invoice_line_ids']//field[@name='product_id']" position="attributes">
+                <attribute name="domain">product_id_domain</attribute>
             </xpath>
 
         </field>
