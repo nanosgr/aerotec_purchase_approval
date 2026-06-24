@@ -10,4 +10,12 @@
         sequence="50"
         groups="account.group_account_manager"/>
 
+    <menuitem
+        id="menu_supplier_products"
+        name="Productos por Proveedor"
+        parent="account.menu_finance_configuration"
+        action="aerotec_purchase_approval.action_supplier_product"
+        sequence="51"
+        groups="account.group_account_manager"/>
+
 </odoo>

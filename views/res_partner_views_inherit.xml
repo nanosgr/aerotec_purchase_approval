@@ -9,23 +9,18 @@
 
             <!-- Pestaña de productos autorizados, visible solo para proveedores -->
             <xpath expr="//notebook" position="inside">
-                <page string="Productos autorizados"
-                    invisible="supplier_rank == 0"
-                    name="supplier_products">
-                    <field name="supplier_product_ids"
-                        widget="many2many_tags"
-                        options="{'no_create': True}"
-                        domain="[('purchase_ok', '=', True)]">
-                        <list>
-                            <field name="name"/>
-                            <field name="categ_id"/>
-                            <field name="uom_id"/>
+                <page string="Productos relacionados" invisible="supplier_rank == 0">
+                    <field name="aerotec_supplier_product_ids"
+                           context="{
+                               'default_partner_id': id,
+                               'default_company_id': current_company_id
+                           }">
+                        <list editable="bottom">
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="product_ids" widget="many2many_tags"
+                                   options="{'no_create_edit': True}"/>
                         </list>
                     </field>
-                    <div class="text-muted mt-2">
-                        Si no se selecciona ningún producto, este proveedor podrá
-                        incluirse en órdenes de compra con cualquier producto.
-                    </div>
                 </page>
             </xpath>
 

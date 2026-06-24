@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_supplier_product" model="ir.actions.act_window">
+        <field name="name">Productos por Proveedor</field>
+        <field name="res_model">aerotec.supplier.product</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('company_id', 'in', allowed_company_ids)]</field>
+    </record>
+
+    <record id="view_supplier_product_list" model="ir.ui.view">
+        <field name="name">aerotec.supplier.product.list</field>
+        <field name="model">aerotec.supplier.product</field>
+        <field name="arch" type="xml">
+            <list string="Productos por Proveedor">
+                <field name="partner_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="product_ids" widget="many2many_tags"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_supplier_product_form" model="ir.ui.view">
+        <field name="name">aerotec.supplier.product.form</field>
+        <field name="model">aerotec.supplier.product</field>
+        <field name="arch" type="xml">
+            <form string="Productos por Proveedor">
+                <sheet>
+                    <group>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="partner_id"/>
+                    </group>
+                    <separator string="Productos relacionados"/>
+                    <field name="product_ids" widget="many2many_tags"
+                           options="{'no_create_edit': True}"
+                           placeholder="Seleccione los productos relacionados para este proveedor..."/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>
