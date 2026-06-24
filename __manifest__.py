@@ -1,6 +1,6 @@
 {
     "name": "Aerotec - Aprobación de Compras",
-    "version": "18.0.1.0.1",
+    "version": "18.0.1.1.0",
     "category": "Accounting/Accounting",
     "summary": "Autorización por monto en facturas de proveedor y pagos, y gestión de productos por proveedor",
     "author": "Sebastian Rios / Aerotec Argentina SA",

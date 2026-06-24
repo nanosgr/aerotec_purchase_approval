@@ -23,11 +23,20 @@ class AccountPayment(models.Model):
         compute="_compute_approval_info",
         store=True,
     )
-    approver_id = fields.Many2one(
+    approver_ids = fields.Many2many(
         "res.users",
-        string="Autorizador requerido",
+        "account_payment_approver_rel",
+        "payment_id",
+        "user_id",
+        string="Autorizadores requeridos",
         compute="_compute_approval_info",
         store=True,
+    )
+    approved_by_id = fields.Many2one(
+        "res.users",
+        string="Aprobado/Rechazado por",
+        readonly=True,
+        copy=False,
     )
     requires_approval = fields.Boolean(
         string="Requiere aprobación",
@@ -36,6 +45,10 @@ class AccountPayment(models.Model):
     )
     is_current_user_approver = fields.Boolean(
         compute="_compute_is_current_user_approver",
+        store=False,
+    )
+    is_current_user_rejecter = fields.Boolean(
+        compute="_compute_is_current_user_rejecter",
         store=False,
     )
     approval_date = fields.Datetime(
@@ -54,7 +67,7 @@ class AccountPayment(models.Model):
         for payment in self:
             if payment.payment_type != "outbound":
                 payment.approval_rule_id = False
-                payment.approver_id = False
+                payment.approver_ids = False
                 payment.requires_approval = False
                 continue
             rule = Rule._find_for_document(
@@ -64,16 +77,25 @@ class AccountPayment(models.Model):
                 doc_type="payment",
             )
             payment.approval_rule_id = rule
-            payment.approver_id = rule.user_id if rule else False
+            payment.approver_ids = rule.user_ids if rule else False
             payment.requires_approval = bool(rule)
 
-    @api.depends("approver_id")
+    @api.depends("approver_ids")
     @api.depends_context("uid")
     def _compute_is_current_user_approver(self):
         for payment in self:
-            payment.is_current_user_approver = bool(
-                payment.approver_id and payment.approver_id.id == self.env.uid
-            )
+            payment.is_current_user_approver = self.env.user in payment.approver_ids
+
+    @api.depends("approver_ids", "approved_by_id", "approval_state")
+    @api.depends_context("uid")
+    def _compute_is_current_user_rejecter(self):
+        for payment in self:
+            if payment.approval_state == "pending":
+                payment.is_current_user_rejecter = self.env.user in payment.approver_ids
+            elif payment.approval_state == "approved":
+                payment.is_current_user_rejecter = self.env.user == payment.approved_by_id
+            else:
+                payment.is_current_user_rejecter = False
 
     def action_request_approval(self):
         for payment in self:
@@ -94,18 +116,19 @@ class AccountPayment(models.Model):
                     )
                 )
             payment.write({"approval_state": "pending"})
-            if payment.approver_id:
+            note = _(
+                "El pago a <b>%(partner)s</b> por <b>%(currency)s %(amount)s</b> "
+                "requiere su autorización.",
+                partner=payment.partner_id.name or "",
+                currency=payment.currency_id.name or "",
+                amount=f"{payment.amount:,.2f}",
+            )
+            for approver in payment.approver_ids:
                 payment.activity_schedule(
                     "mail.mail_activity_data_todo",
-                    user_id=payment.approver_id.id,
+                    user_id=approver.id,
                     summary=_("Pago a proveedor pendiente de su autorización"),
-                    note=_(
-                        "El pago a <b>%(partner)s</b> por <b>%(currency)s %(amount)s</b> "
-                        "requiere su autorización.",
-                        partner=payment.partner_id.name or "",
-                        currency=payment.currency_id.name or "",
-                        amount=f"{payment.amount:,.2f}",
-                    ),
+                    note=note,
                 )
 
     def action_approve_payment(self):
@@ -114,34 +137,38 @@ class AccountPayment(models.Model):
                 raise UserError(
                     _("Solo se pueden aprobar pagos que están pendientes de aprobación.")
                 )
-            if payment.approver_id and self.env.user != payment.approver_id:
+            if self.env.user not in payment.approver_ids:
                 raise UserError(
-                    _(
-                        "Solo '%(user)s' está autorizado a aprobar este pago.",
-                        user=payment.approver_id.name,
-                    )
+                    _("No tiene autorización para aprobar este pago.")
                 )
             payment.write({
                 "approval_state": "approved",
                 "approval_date": fields.Datetime.now(),
+                "approved_by_id": self.env.user.id,
             })
-            payment.activity_feedback(["mail.mail_activity_data_todo"])
+            payment.activity_unlink(["mail.mail_activity_data_todo"])
 
     def action_reject_payment(self):
         for payment in self:
             if payment.approval_state not in ("pending", "approved"):
                 raise UserError(_("Solo se pueden rechazar pagos pendientes o aprobados."))
-            if payment.approver_id and self.env.user != payment.approver_id:
+            if payment.approval_state == "pending" and self.env.user not in payment.approver_ids:
+                raise UserError(
+                    _("No tiene autorización para rechazar este pago.")
+                )
+            if payment.approval_state == "approved" and self.env.user != payment.approved_by_id:
                 raise UserError(
                     _(
-                        "Solo '%(user)s' está autorizado a rechazar este pago.",
-                        user=payment.approver_id.name,
+                        "Solo '%(user)s' puede revertir su propia aprobación.",
+                        user=payment.approved_by_id.name,
                     )
                 )
             payment.write({
                 "approval_state": "rejected",
                 "approval_date": False,
+                "approved_by_id": False,
             })
+            payment.activity_unlink(["mail.mail_activity_data_todo"])
 
     def action_cancel_approval_request(self):
         """El creador cancela la solicitud pendiente."""
@@ -166,11 +193,12 @@ class AccountPayment(models.Model):
                 and payment.approval_state != "approved"
             ):
                 labels = dict(self._fields["approval_state"].selection)
+                approvers = ", ".join(payment.approver_ids.mapped("name")) or "un autorizador configurado"
                 raise UserError(
                     _(
-                        "El pago requiere la aprobación de '%(user)s' antes de validarse.\n"
+                        "El pago requiere la aprobación de: %(users)s.\n"
                         "Estado actual: %(state)s.",
-                        user=payment.approver_id.name if payment.approver_id else "un autorizador configurado",
+                        users=approvers,
                         state=labels.get(payment.approval_state, payment.approval_state),
                     )
                 )

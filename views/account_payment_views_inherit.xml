@@ -11,8 +11,10 @@
             <xpath expr="//sheet//field[@name='id']" position="after">
                 <field name="requires_approval" invisible="1"/>
                 <field name="approval_state" invisible="1"/>
-                <field name="approver_id" invisible="1"/>
+                <field name="approver_ids" invisible="1"/>
+                <field name="approved_by_id" invisible="1"/>
                 <field name="is_current_user_approver" invisible="1"/>
+                <field name="is_current_user_rejecter" invisible="1"/>
                 <field name="approval_date" invisible="1"/>
             </xpath>
 
@@ -23,7 +25,7 @@
                 </attribute>
             </xpath>
 
-            <!-- Nuevos botones de flujo de aprobación (antes del botón Confirm) -->
+            <!-- Nuevos botones de flujo de aprobación -->
             <xpath expr="//button[@name='action_post']" position="before">
 
                 <button name="action_request_approval"
@@ -43,7 +45,7 @@
                     string="Rechazar"
                     type="object"
                     class="btn-danger"
-                    invisible="payment_type != 'outbound' or approval_state not in ('pending', 'approved') or not is_current_user_approver"
+                    invisible="payment_type != 'outbound' or approval_state not in ('pending', 'approved') or not is_current_user_rejecter"
                     confirm="¿Confirma el rechazo de este pago?"/>
 
                 <button name="action_cancel_approval_request"
@@ -58,7 +60,7 @@
 
             </xpath>
 
-            <!-- Sección de información de aprobación en el cuerpo -->
+            <!-- Sección de información de aprobación -->
             <xpath expr="//sheet" position="inside">
                 <group string="Autorización de pago"
                     invisible="payment_type != 'outbound' or not requires_approval"
@@ -69,9 +71,11 @@
                             decoration-warning="approval_state == 'pending'"
                             decoration-success="approval_state == 'approved'"
                             decoration-danger="approval_state == 'rejected'"/>
-                        <field name="approver_id" readonly="1"/>
+                        <field name="approver_ids" widget="many2many_tags" readonly="1"/>
                     </group>
                     <group>
+                        <field name="approved_by_id" readonly="1"
+                            invisible="not approved_by_id"/>
                         <field name="approval_date" readonly="1"
                             invisible="not approval_date"/>
                         <field name="approval_notes"

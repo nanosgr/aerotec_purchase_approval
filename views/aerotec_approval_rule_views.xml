@@ -5,8 +5,8 @@
         <field name="name">aerotec.approval.rule.list</field>
         <field name="model">aerotec.approval.rule</field>
         <field name="arch" type="xml">
-            <list string="Reglas de Autorización" editable="top">
-                <field name="user_id"/>
+            <list string="Reglas de Autorización">
+                <field name="user_ids" widget="many2many_tags"/>
                 <field name="approval_type"/>
                 <field name="max_amount"/>
                 <field name="currency_id"/>
@@ -26,8 +26,9 @@
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
                     <group>
-                        <group string="Autorizador">
-                            <field name="user_id"/>
+                        <group string="Autorizadores">
+                            <field name="user_ids" widget="many2many_tags"
+                                   options="{'no_create_edit': True}"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="active"/>
                         </group>
@@ -39,10 +40,10 @@
                     </group>
                     <group string="Descripción del comportamiento">
                         <div class="text-muted" colspan="2">
-                            Este usuario podrá autorizar comprobantes cuyo monto, convertido a
-                            la moneda del tope, no supere el monto máximo configurado.
-                            Si el monto supera el tope, se buscará el siguiente autorizador
-                            con límite mayor.
+                            Cualquiera de los usuarios autorizadores puede aprobar o rechazar
+                            comprobantes cuyo monto, convertido a la moneda del tope, no supere
+                            el monto máximo configurado. Si el monto supera el tope, se aplicará
+                            la siguiente regla con límite mayor.
                         </div>
                     </group>
                 </sheet>
@@ -55,7 +56,7 @@
         <field name="model">aerotec.approval.rule</field>
         <field name="arch" type="xml">
             <search string="Buscar reglas de autorización">
-                <field name="user_id"/>
+                <field name="user_ids"/>
                 <separator/>
                 <filter string="Facturas" name="invoice"
                     domain="[('approval_type', 'in', ['invoice', 'both'])]"/>
@@ -65,8 +66,6 @@
                 <filter string="Archivadas" name="inactive"
                     domain="[('active', '=', False)]"/>
                 <group expand="0" string="Agrupar por">
-                    <filter string="Usuario" name="group_user"
-                        context="{'group_by': 'user_id'}"/>
                     <filter string="Tipo" name="group_type"
                         context="{'group_by': 'approval_type'}"/>
                     <filter string="Empresa" name="group_company"
@@ -87,9 +86,9 @@
                 No hay reglas de autorización configuradas
             </p>
             <p>
-                Cree reglas para definir qué usuario debe aprobar facturas y pagos
-                según el monto del comprobante. Cada usuario tiene un monto máximo
-                que puede autorizar.
+                Cree reglas para definir qué usuarios pueden aprobar facturas y pagos
+                según el monto del comprobante. Cualquiera de los usuarios configurados
+                en la regla puede autorizar el comprobante.
             </p>
         </field>
     </record>

@@ -18,10 +18,12 @@ class AerotecApprovalRule(models.Model):
         required=True,
         default=lambda self: self.env.company,
     )
-    user_id = fields.Many2one(
+    user_ids = fields.Many2many(
         "res.users",
-        string="Usuario autorizador",
-        required=True,
+        "aerotec_approval_rule_users_rel",
+        "rule_id",
+        "user_id",
+        string="Usuarios autorizadores",
         domain=[("share", "=", False)],
     )
     approval_type = fields.Selection(
@@ -39,8 +41,8 @@ class AerotecApprovalRule(models.Model):
         required=True,
         currency_field="currency_id",
         help=(
-            "Este usuario puede autorizar comprobantes cuyo monto sea menor o igual a este valor. "
-            "Para montos mayores se necesita un usuario con límite superior."
+            "Cualquiera de los usuarios autorizadores puede aprobar comprobantes cuyo monto "
+            "sea menor o igual a este valor. Para montos mayores se necesita una regla con límite superior."
         ),
     )
     currency_id = fields.Many2one(
@@ -51,7 +53,7 @@ class AerotecApprovalRule(models.Model):
     )
     active = fields.Boolean(default=True)
 
-    @api.depends("user_id", "max_amount", "currency_id", "approval_type")
+    @api.depends("user_ids", "max_amount", "currency_id", "approval_type")
     def _compute_name(self):
         type_labels = {
             "invoice": "Facturas",
@@ -61,10 +63,25 @@ class AerotecApprovalRule(models.Model):
         for rec in self:
             label = type_labels.get(rec.approval_type, "")
             amount_str = f"{rec.max_amount:,.2f}" if rec.max_amount else "0,00"
+            names = rec.user_ids.mapped("name")
+            if not names:
+                users_str = "Sin usuarios"
+            elif len(names) <= 2:
+                users_str = ", ".join(names)
+            else:
+                users_str = f"{names[0]}, {names[1]} y {len(names) - 2} más"
             rec.name = (
-                f"{rec.user_id.name or 'Sin usuario'} — "
+                f"{users_str} — "
                 f"{rec.currency_id.name or ''} {amount_str} ({label})"
             )
+
+    @api.constrains("user_ids")
+    def _check_user_ids(self):
+        for rec in self:
+            if not rec.user_ids:
+                raise ValidationError(
+                    _("Debe configurar al menos un usuario autorizador en la regla.")
+                )
 
     @api.constrains("max_amount")
     def _check_max_amount(self):

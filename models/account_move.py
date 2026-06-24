@@ -23,11 +23,20 @@ class AccountMove(models.Model):
         compute="_compute_approval_info",
         store=True,
     )
-    approver_id = fields.Many2one(
+    approver_ids = fields.Many2many(
         "res.users",
-        string="Autorizador requerido",
+        "account_move_approver_rel",
+        "move_id",
+        "user_id",
+        string="Autorizadores requeridos",
         compute="_compute_approval_info",
         store=True,
+    )
+    approved_by_id = fields.Many2one(
+        "res.users",
+        string="Aprobado/Rechazado por",
+        readonly=True,
+        copy=False,
     )
     requires_approval = fields.Boolean(
         string="Requiere aprobación",
@@ -36,6 +45,10 @@ class AccountMove(models.Model):
     )
     is_current_user_approver = fields.Boolean(
         compute="_compute_is_current_user_approver",
+        store=False,
+    )
+    is_current_user_rejecter = fields.Boolean(
+        compute="_compute_is_current_user_rejecter",
         store=False,
     )
     approval_date = fields.Datetime(
@@ -54,7 +67,7 @@ class AccountMove(models.Model):
         for move in self:
             if move.move_type != "in_invoice":
                 move.approval_rule_id = False
-                move.approver_id = False
+                move.approver_ids = False
                 move.requires_approval = False
                 continue
             rule = Rule._find_for_document(
@@ -64,16 +77,25 @@ class AccountMove(models.Model):
                 doc_type="invoice",
             )
             move.approval_rule_id = rule
-            move.approver_id = rule.user_id if rule else False
+            move.approver_ids = rule.user_ids if rule else False
             move.requires_approval = bool(rule)
 
-    @api.depends("approver_id")
+    @api.depends("approver_ids")
     @api.depends_context("uid")
     def _compute_is_current_user_approver(self):
         for move in self:
-            move.is_current_user_approver = bool(
-                move.approver_id and move.approver_id.id == self.env.uid
-            )
+            move.is_current_user_approver = self.env.user in move.approver_ids
+
+    @api.depends("approver_ids", "approved_by_id", "approval_state")
+    @api.depends_context("uid")
+    def _compute_is_current_user_rejecter(self):
+        for move in self:
+            if move.approval_state == "pending":
+                move.is_current_user_rejecter = self.env.user in move.approver_ids
+            elif move.approval_state == "approved":
+                move.is_current_user_rejecter = self.env.user == move.approved_by_id
+            else:
+                move.is_current_user_rejecter = False
 
     def action_request_approval(self):
         for move in self:
@@ -94,19 +116,20 @@ class AccountMove(models.Model):
                     )
                 )
             move.write({"approval_state": "pending"})
-            if move.approver_id:
+            note = _(
+                "La factura <b>%(ref)s</b> de <b>%(partner)s</b> "
+                "por <b>%(currency)s %(amount)s</b> requiere su autorización.",
+                ref=move.name or move.ref or "borrador",
+                partner=move.partner_id.name or "",
+                currency=move.currency_id.name or "",
+                amount=f"{move.amount_total:,.2f}",
+            )
+            for approver in move.approver_ids:
                 move.activity_schedule(
                     "mail.mail_activity_data_todo",
-                    user_id=move.approver_id.id,
+                    user_id=approver.id,
                     summary=_("Factura de proveedor pendiente de su autorización"),
-                    note=_(
-                        "La factura <b>%(ref)s</b> de <b>%(partner)s</b> "
-                        "por <b>%(currency)s %(amount)s</b> requiere su autorización.",
-                        ref=move.name or move.ref or "borrador",
-                        partner=move.partner_id.name or "",
-                        currency=move.currency_id.name or "",
-                        amount=f"{move.amount_total:,.2f}",
-                    ),
+                    note=note,
                 )
 
     def action_approve_invoice(self):
@@ -115,18 +138,16 @@ class AccountMove(models.Model):
                 raise UserError(
                     _("Solo se pueden aprobar facturas que están pendientes de aprobación.")
                 )
-            if move.approver_id and self.env.user != move.approver_id:
+            if self.env.user not in move.approver_ids:
                 raise UserError(
-                    _(
-                        "Solo '%(user)s' está autorizado a aprobar esta factura.",
-                        user=move.approver_id.name,
-                    )
+                    _("No tiene autorización para aprobar esta factura.")
                 )
             move.write({
                 "approval_state": "approved",
                 "approval_date": fields.Datetime.now(),
+                "approved_by_id": self.env.user.id,
             })
-            move.activity_feedback(["mail.mail_activity_data_todo"])
+            move.activity_unlink(["mail.mail_activity_data_todo"])
 
     def action_reject_invoice(self):
         for move in self:
@@ -134,17 +155,23 @@ class AccountMove(models.Model):
                 raise UserError(
                     _("Solo se pueden rechazar facturas pendientes o aprobadas.")
                 )
-            if move.approver_id and self.env.user != move.approver_id:
+            if move.approval_state == "pending" and self.env.user not in move.approver_ids:
+                raise UserError(
+                    _("No tiene autorización para rechazar esta factura.")
+                )
+            if move.approval_state == "approved" and self.env.user != move.approved_by_id:
                 raise UserError(
                     _(
-                        "Solo '%(user)s' está autorizado a rechazar esta factura.",
-                        user=move.approver_id.name,
+                        "Solo '%(user)s' puede revertir su propia aprobación.",
+                        user=move.approved_by_id.name,
                     )
                 )
             move.write({
                 "approval_state": "rejected",
                 "approval_date": False,
+                "approved_by_id": False,
             })
+            move.activity_unlink(["mail.mail_activity_data_todo"])
 
     def action_cancel_approval_request(self):
         """El creador cancela la solicitud de aprobación para poder editar la factura."""
@@ -169,12 +196,13 @@ class AccountMove(models.Model):
                 and move.approval_state != "approved"
             ):
                 labels = dict(self._fields["approval_state"].selection)
+                approvers = ", ".join(move.approver_ids.mapped("name")) or "un autorizador configurado"
                 raise UserError(
                     _(
-                        "La factura '%(name)s' requiere la aprobación de '%(user)s' antes de confirmarse.\n"
+                        "La factura '%(name)s' requiere la aprobación de: %(users)s.\n"
                         "Estado actual: %(state)s.",
                         name=move.name or "",
-                        user=move.approver_id.name if move.approver_id else "un autorizador configurado",
+                        users=approvers,
                         state=labels.get(move.approval_state, move.approval_state),
                     )
                 )
