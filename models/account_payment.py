@@ -123,12 +123,58 @@ class AccountPayment(models.Model):
                 currency=payment.currency_id.name or "",
                 amount=f"{payment.amount:,.2f}",
             )
+            payment._notify_approvers(
+                note, summary=_("Pago a proveedor pendiente de su autorización")
+            )
+
+    def _notify_approvers(self, note, summary):
+        for payment in self:
             for approver in payment.approver_ids:
                 payment.activity_schedule(
                     "mail.mail_activity_data_todo",
                     user_id=approver.id,
-                    summary=_("Pago a proveedor pendiente de su autorización"),
+                    summary=summary,
                     note=note,
+                )
+
+    def _reset_approval_for_draft(self):
+        for payment in self:
+            old_approver = payment.approved_by_id
+            old_date = payment.approval_date
+            old_amount = payment.amount
+            old_currency = payment.currency_id.name or ""
+            new_state = "pending" if payment.requires_approval else "not_required"
+            payment.write({
+                "approval_state": new_state,
+                "approved_by_id": False,
+                "approval_date": False,
+            })
+            payment.message_post(
+                body=_(
+                    "⚠️ %(user)s restableció este pago a borrador. "
+                    "Se anuló la aprobación previa de <b>%(approver)s</b> "
+                    "del %(date)s, otorgada para un importe de "
+                    "%(currency)s %(amount)s. El pago vuelve a estado "
+                    "'Pendiente de aprobación' y debe ser re-autorizado "
+                    "antes de confirmarse.",
+                    user=self.env.user.name,
+                    approver=old_approver.name or "-",
+                    date=old_date or "-",
+                    currency=old_currency,
+                    amount=f"{old_amount:,.2f}",
+                )
+            )
+            if new_state == "pending":
+                note = _(
+                    "El pago a <b>%(partner)s</b> por <b>%(currency)s %(amount)s</b> "
+                    "fue devuelto a borrador y requiere nuevamente su autorización.",
+                    partner=payment.partner_id.name or "",
+                    currency=payment.currency_id.name or "",
+                    amount=f"{payment.amount:,.2f}",
+                )
+                payment._notify_approvers(
+                    note,
+                    summary=_("Pago a proveedor pendiente de su autorización"),
                 )
 
     def action_approve_payment(self):
@@ -203,3 +249,11 @@ class AccountPayment(models.Model):
                     )
                 )
         return super().action_post()
+
+    def action_draft(self):
+        to_reset = self.filtered(
+            lambda p: p.payment_type == "outbound" and p.approval_state == "approved"
+        )
+        result = super().action_draft()
+        to_reset._reset_approval_for_draft()
+        return result

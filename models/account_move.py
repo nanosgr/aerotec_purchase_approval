@@ -124,12 +124,60 @@ class AccountMove(models.Model):
                 currency=move.currency_id.name or "",
                 amount=f"{move.amount_total:,.2f}",
             )
+            move._notify_approvers(
+                note, summary=_("Factura de proveedor pendiente de su autorización")
+            )
+
+    def _notify_approvers(self, note, summary):
+        for move in self:
             for approver in move.approver_ids:
                 move.activity_schedule(
                     "mail.mail_activity_data_todo",
                     user_id=approver.id,
-                    summary=_("Factura de proveedor pendiente de su autorización"),
+                    summary=summary,
                     note=note,
+                )
+
+    def _reset_approval_for_draft(self):
+        for move in self:
+            old_approver = move.approved_by_id
+            old_date = move.approval_date
+            old_amount = move.amount_total
+            old_currency = move.currency_id.name or ""
+            new_state = "pending" if move.requires_approval else "not_required"
+            move.write({
+                "approval_state": new_state,
+                "approved_by_id": False,
+                "approval_date": False,
+            })
+            move.message_post(
+                body=_(
+                    "⚠️ %(user)s restableció esta factura a borrador. "
+                    "Se anuló la aprobación previa de <b>%(approver)s</b> "
+                    "del %(date)s, otorgada para un importe de "
+                    "%(currency)s %(amount)s. La factura vuelve a estado "
+                    "'Pendiente de aprobación' y debe ser re-autorizada "
+                    "antes de confirmarse.",
+                    user=self.env.user.name,
+                    approver=old_approver.name or "-",
+                    date=old_date or "-",
+                    currency=old_currency,
+                    amount=f"{old_amount:,.2f}",
+                )
+            )
+            if new_state == "pending":
+                note = _(
+                    "La factura <b>%(ref)s</b> de <b>%(partner)s</b> "
+                    "por <b>%(currency)s %(amount)s</b> fue devuelta a "
+                    "borrador y requiere nuevamente su autorización.",
+                    ref=move.name or move.ref or "borrador",
+                    partner=move.partner_id.name or "",
+                    currency=move.currency_id.name or "",
+                    amount=f"{move.amount_total:,.2f}",
+                )
+                move._notify_approvers(
+                    note,
+                    summary=_("Factura de proveedor pendiente de su autorización"),
                 )
 
     def action_approve_invoice(self):
@@ -207,3 +255,11 @@ class AccountMove(models.Model):
                     )
                 )
         return super().action_post()
+
+    def button_draft(self):
+        to_reset = self.filtered(
+            lambda m: m.move_type == "in_invoice" and m.approval_state == "approved"
+        )
+        result = super().button_draft()
+        to_reset._reset_approval_for_draft()
+        return result
