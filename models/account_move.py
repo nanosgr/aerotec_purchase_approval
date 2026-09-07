@@ -28,9 +28,17 @@ class AccountMove(models.Model):
         "account_move_approver_rel",
         "move_id",
         "user_id",
-        string="Autorizadores requeridos",
+        string="Autorizadores habilitados",
         compute="_compute_approval_info",
         store=True,
+    )
+    approver_id = fields.Many2one(
+        "res.users",
+        string="Autorizador asignado",
+        copy=False,
+        tracking=True,
+        help="Usuario seleccionado al solicitar la aprobación. Solo esta persona puede "
+        "aprobar o rechazar el comprobante.",
     )
     approved_by_id = fields.Many2one(
         "res.users",
@@ -42,6 +50,13 @@ class AccountMove(models.Model):
         string="Requiere aprobación",
         compute="_compute_approval_info",
         store=True,
+    )
+    approval_blocked = fields.Boolean(
+        string="Sin autorizador disponible",
+        compute="_compute_approval_info",
+        store=True,
+        help="El monto queda fuera de todos los rangos de autorización configurados: "
+        "no hay ningún usuario habilitado para autorizarlo.",
     )
     is_current_user_approver = fields.Boolean(
         compute="_compute_is_current_user_approver",
@@ -69,74 +84,106 @@ class AccountMove(models.Model):
                 move.approval_rule_id = False
                 move.approver_ids = False
                 move.requires_approval = False
+                move.approval_blocked = False
                 continue
-            rule = Rule._find_for_document(
+            res = Rule._evaluate_for_document(
                 amount=move.amount_total,
                 currency=move.currency_id,
                 company=move.company_id,
                 doc_type="invoice",
             )
+            rule = res["rule"]
             move.approval_rule_id = rule
             move.approver_ids = rule.user_ids if rule else False
-            move.requires_approval = bool(rule)
+            move.requires_approval = res["status"] == "required"
+            move.approval_blocked = res["status"] == "blocked"
 
-    @api.depends("approver_ids")
+    @api.depends("approver_id")
     @api.depends_context("uid")
     def _compute_is_current_user_approver(self):
         for move in self:
-            move.is_current_user_approver = self.env.user in move.approver_ids
+            move.is_current_user_approver = self.env.user == move.approver_id
 
-    @api.depends("approver_ids", "approved_by_id", "approval_state")
+    @api.depends("approver_id", "approved_by_id", "approval_state")
     @api.depends_context("uid")
     def _compute_is_current_user_rejecter(self):
         for move in self:
             if move.approval_state == "pending":
-                move.is_current_user_rejecter = self.env.user in move.approver_ids
+                move.is_current_user_rejecter = self.env.user == move.approver_id
             elif move.approval_state == "approved":
                 move.is_current_user_rejecter = self.env.user == move.approved_by_id
             else:
                 move.is_current_user_rejecter = False
 
     def action_request_approval(self):
-        for move in self:
-            if move.move_type != "in_invoice":
-                raise UserError(
-                    _("Solo se puede solicitar aprobación para facturas de proveedor.")
-                )
-            if not move.requires_approval:
-                raise UserError(
-                    _("Esta factura no supera ningún tope configurado y no requiere aprobación.")
-                )
-            if move.approval_state in ("pending", "approved"):
-                labels = dict(self._fields["approval_state"].selection)
-                raise UserError(
-                    _(
-                        "La factura ya está en estado '%(state)s'.",
-                        state=labels.get(move.approval_state, ""),
-                    )
-                )
-            move.write({"approval_state": "pending"})
-            note = _(
-                "La factura <b>%(ref)s</b> de <b>%(partner)s</b> "
-                "por <b>%(currency)s %(amount)s</b> requiere su autorización.",
-                ref=move.name or move.ref or "borrador",
-                partner=move.partner_id.name or "",
-                currency=move.currency_id.name or "",
-                amount=f"{move.amount_total:,.2f}",
+        self.ensure_one()
+        if self.move_type != "in_invoice":
+            raise UserError(
+                _("Solo se puede solicitar aprobación para facturas de proveedor.")
             )
-            move._notify_approvers(
-                note, summary=_("Factura de proveedor pendiente de su autorización")
+        if self.approval_blocked:
+            raise UserError(
+                _(
+                    "Esta factura está fuera de todos los rangos de autorización "
+                    "configurados. No hay ningún usuario habilitado para autorizarla."
+                )
             )
+        if not self.requires_approval:
+            raise UserError(
+                _("Esta factura no supera ningún tope configurado y no requiere aprobación.")
+            )
+        if self.approval_state in ("pending", "approved"):
+            labels = dict(self._fields["approval_state"].selection)
+            raise UserError(
+                _(
+                    "La factura ya está en estado '%(state)s'.",
+                    state=labels.get(self.approval_state, ""),
+                )
+            )
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Solicitar aprobación"),
+            "res_model": "aerotec.approval.request.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_move_id": self.id},
+        }
 
-    def _notify_approvers(self, note, summary):
+    def _do_request_approval(self, approver, note=False):
+        """Registra la solicitud de aprobación asignando un autorizador único."""
+        self.ensure_one()
+        if approver not in self.approval_rule_id.user_ids:
+            raise UserError(
+                _("El autorizador seleccionado no está habilitado para esta factura.")
+            )
+        vals = {"approval_state": "pending", "approver_id": approver.id}
+        if note:
+            vals["approval_notes"] = note
+        self.write(vals)
+        body = _(
+            "La factura <b>%(ref)s</b> de <b>%(partner)s</b> "
+            "por <b>%(currency)s %(amount)s</b> requiere su autorización.",
+            ref=self.name or self.ref or "borrador",
+            partner=self.partner_id.name or "",
+            currency=self.currency_id.name or "",
+            amount=f"{self.amount_total:,.2f}",
+        )
+        if note:
+            body += _("<br/>Nota del solicitante: %(note)s", note=note)
+        self._notify_approver(
+            body, summary=_("Factura de proveedor pendiente de su autorización")
+        )
+
+    def _notify_approver(self, note, summary):
         for move in self:
-            for approver in move.approver_ids:
-                move.activity_schedule(
-                    "mail.mail_activity_data_todo",
-                    user_id=approver.id,
-                    summary=summary,
-                    note=note,
-                )
+            if not move.approver_id:
+                continue
+            move.activity_schedule(
+                "mail.mail_activity_data_todo",
+                user_id=move.approver_id.id,
+                summary=summary,
+                note=note,
+            )
 
     def _reset_approval_for_draft(self):
         for move in self:
@@ -144,12 +191,18 @@ class AccountMove(models.Model):
             old_date = move.approval_date
             old_amount = move.amount_total
             old_currency = move.currency_id.name or ""
-            new_state = "pending" if move.requires_approval else "not_required"
-            move.write({
+            if move.approval_blocked or not move.requires_approval:
+                new_state = "not_required"
+            else:
+                new_state = "pending"
+            vals = {
                 "approval_state": new_state,
                 "approved_by_id": False,
                 "approval_date": False,
-            })
+            }
+            if new_state == "not_required":
+                vals["approver_id"] = False
+            move.write(vals)
             move.message_post(
                 body=_(
                     "⚠️ %(user)s restableció esta factura a borrador. "
@@ -175,7 +228,7 @@ class AccountMove(models.Model):
                     currency=move.currency_id.name or "",
                     amount=f"{move.amount_total:,.2f}",
                 )
-                move._notify_approvers(
+                move._notify_approver(
                     note,
                     summary=_("Factura de proveedor pendiente de su autorización"),
                 )
@@ -186,9 +239,16 @@ class AccountMove(models.Model):
                 raise UserError(
                     _("Solo se pueden aprobar facturas que están pendientes de aprobación.")
                 )
-            if self.env.user not in move.approver_ids:
+            if self.env.user != move.approver_id:
                 raise UserError(
                     _("No tiene autorización para aprobar esta factura.")
+                )
+            if move.approver_id not in move.approval_rule_id.user_ids:
+                raise UserError(
+                    _(
+                        "El autorizador asignado ya no está habilitado para el monto "
+                        "actual de la factura. Cancele la solicitud y vuelva a solicitarla."
+                    )
                 )
             move.write({
                 "approval_state": "approved",
@@ -203,7 +263,7 @@ class AccountMove(models.Model):
                 raise UserError(
                     _("Solo se pueden rechazar facturas pendientes o aprobadas.")
                 )
-            if move.approval_state == "pending" and self.env.user not in move.approver_ids:
+            if move.approval_state == "pending" and self.env.user != move.approver_id:
                 raise UserError(
                     _("No tiene autorización para rechazar esta factura.")
                 )
@@ -226,7 +286,7 @@ class AccountMove(models.Model):
         for move in self:
             if move.approval_state != "pending":
                 raise UserError(_("Solo se puede cancelar una solicitud pendiente."))
-            move.write({"approval_state": "not_required"})
+            move.write({"approval_state": "not_required", "approver_id": False})
             move.activity_unlink(["mail.mail_activity_data_todo"])
 
     def action_reset_invoice_approval(self):
@@ -234,23 +294,33 @@ class AccountMove(models.Model):
         for move in self:
             if move.approval_state != "rejected":
                 raise UserError(_("Solo se pueden restablecer facturas rechazadas."))
-            move.write({"approval_state": "not_required"})
+            move.write({"approval_state": "not_required", "approver_id": False})
 
     def action_post(self):
         for move in self:
-            if (
-                move.move_type == "in_invoice"
-                and move.requires_approval
-                and move.approval_state != "approved"
-            ):
-                labels = dict(self._fields["approval_state"].selection)
-                approvers = ", ".join(move.approver_ids.mapped("name")) or "un autorizador configurado"
+            if move.move_type != "in_invoice":
+                continue
+            if move.approval_blocked:
                 raise UserError(
                     _(
-                        "La factura '%(name)s' requiere la aprobación de: %(users)s.\n"
+                        "La factura '%(name)s' por %(currency)s %(amount)s está fuera de "
+                        "todos los rangos de autorización configurados: no hay ningún "
+                        "usuario habilitado para autorizarla. Cree o ajuste una regla de "
+                        "autorización que cubra este monto.",
+                        name=move.name or "",
+                        currency=move.currency_id.name or "",
+                        amount=f"{move.amount_total:,.2f}",
+                    )
+                )
+            if move.requires_approval and move.approval_state != "approved":
+                labels = dict(self._fields["approval_state"].selection)
+                approver = move.approver_id.name or "un autorizador configurado"
+                raise UserError(
+                    _(
+                        "La factura '%(name)s' requiere la aprobación de: %(user)s.\n"
                         "Estado actual: %(state)s.",
                         name=move.name or "",
-                        users=approvers,
+                        user=approver,
                         state=labels.get(move.approval_state, move.approval_state),
                     )
                 )

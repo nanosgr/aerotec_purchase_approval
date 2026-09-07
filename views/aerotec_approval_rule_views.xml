@@ -8,6 +8,7 @@
             <list string="Reglas de Autorización">
                 <field name="user_ids" widget="many2many_tags"/>
                 <field name="approval_type"/>
+                <field name="min_amount"/>
                 <field name="max_amount"/>
                 <field name="currency_id"/>
                 <field name="company_id" groups="base.group_multi_company"/>
@@ -32,18 +33,24 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="active"/>
                         </group>
-                        <group string="Límite de autorización">
+                        <group string="Rango de autorización">
                             <field name="approval_type"/>
+                            <field name="min_amount"/>
                             <field name="max_amount"/>
                             <field name="currency_id"/>
                         </group>
                     </group>
                     <group string="Descripción del comportamiento">
                         <div class="text-muted" colspan="2">
-                            Cualquiera de los usuarios autorizadores puede aprobar o rechazar
-                            comprobantes cuyo monto, convertido a la moneda del tope, no supere
-                            el monto máximo configurado. Si el monto supera el tope, se aplicará
-                            la siguiente regla con límite mayor.
+                            Al solicitar la aprobación de un comprobante, el solicitante elige
+                            uno de los usuarios autorizadores de la regla cuyo rango
+                            [mínimo, máximo] —convertido a la moneda del tope— contiene el monto
+                            del comprobante. Solo ese usuario podrá aprobarlo o rechazarlo.
+                            <br/>
+                            Los comprobantes cuyo monto sea menor que el mínimo de todas las
+                            reglas no requieren aprobación. Los que queden por encima del máximo
+                            de todas las reglas, o en un hueco entre rangos, no podrán confirmarse
+                            hasta crear o ajustar una regla que los cubra.
                         </div>
                     </group>
                 </sheet>

@@ -10,8 +10,10 @@
             <!-- Campos computados necesarios para condiciones de botones -->
             <xpath expr="//sheet//field[@name='id']" position="after">
                 <field name="requires_approval" invisible="1"/>
+                <field name="approval_blocked" invisible="1"/>
                 <field name="approval_state" invisible="1"/>
                 <field name="approver_ids" invisible="1"/>
+                <field name="approver_id" invisible="1"/>
                 <field name="approved_by_id" invisible="1"/>
                 <field name="is_current_user_approver" invisible="1"/>
                 <field name="is_current_user_rejecter" invisible="1"/>
@@ -21,7 +23,7 @@
             <!-- Ocultar el botón Confirm cuando el pago requiere aprobación no otorgada -->
             <xpath expr="//button[@name='action_post']" position="attributes">
                 <attribute name="invisible">
-                    state != 'draft' or (payment_type == 'outbound' and requires_approval and approval_state != 'approved')
+                    state != 'draft' or (payment_type == 'outbound' and ((requires_approval and approval_state != 'approved') or approval_blocked))
                 </attribute>
             </xpath>
 
@@ -60,6 +62,17 @@
 
             </xpath>
 
+            <!-- Alerta: pago fuera de todos los rangos de autorización -->
+            <xpath expr="//sheet" position="inside">
+                <div class="alert alert-danger" role="alert"
+                    invisible="payment_type != 'outbound' or not approval_blocked">
+                    Este pago está fuera de todos los rangos de autorización configurados.
+                    No hay ningún usuario habilitado para autorizarlo: cree o ajuste una regla
+                    de autorización que cubra este monto. El pago no puede confirmarse hasta
+                    entonces.
+                </div>
+            </xpath>
+
             <!-- Sección de información de aprobación -->
             <xpath expr="//sheet" position="inside">
                 <group string="Autorización de pago"
@@ -71,6 +84,8 @@
                             decoration-warning="approval_state == 'pending'"
                             decoration-success="approval_state == 'approved'"
                             decoration-danger="approval_state == 'rejected'"/>
+                        <field name="approver_id" readonly="1"
+                            invisible="not approver_id"/>
                         <field name="approver_ids" widget="many2many_tags" readonly="1"/>
                     </group>
                     <group>
