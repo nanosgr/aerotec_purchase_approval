@@ -9,9 +9,9 @@ class AerotecApprovalRequestWizard(models.TransientModel):
     move_id = fields.Many2one("account.move", string="Factura", ondelete="cascade")
     payment_id = fields.Many2one("account.payment", string="Pago", ondelete="cascade")
 
-    rule_id = fields.Many2one(
+    rule_ids = fields.Many2many(
         "aerotec.approval.rule",
-        string="Regla aplicable",
+        string="Reglas aplicables",
         compute="_compute_source_info",
         readonly=True,
     )
@@ -43,8 +43,8 @@ class AerotecApprovalRequestWizard(models.TransientModel):
     def _compute_source_info(self):
         for wiz in self:
             record = wiz._get_record()
-            wiz.rule_id = record.approval_rule_id if record else False
-            wiz.available_approver_ids = record.approval_rule_id.user_ids if record else False
+            wiz.rule_ids = record.approval_rule_ids if record else False
+            wiz.available_approver_ids = record.approver_ids if record else False
             if not record:
                 wiz.document_label = False
                 wiz.amount_label = False

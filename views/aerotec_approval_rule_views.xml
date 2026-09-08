@@ -43,9 +43,12 @@
                     <group string="Descripción del comportamiento">
                         <div class="text-muted" colspan="2">
                             Al solicitar la aprobación de un comprobante, el solicitante elige
-                            uno de los usuarios autorizadores de la regla cuyo rango
-                            [mínimo, máximo] —convertido a la moneda del tope— contiene el monto
-                            del comprobante. Solo ese usuario podrá aprobarlo o rechazarlo.
+                            un único autorizador entre los usuarios de todas las reglas cuyo
+                            rango [mínimo, máximo] —convertido a la moneda del tope— contiene el
+                            monto del comprobante. Solo ese usuario podrá aprobarlo o rechazarlo.
+                            <br/>
+                            Los rangos pueden solaparse: si el monto cae en varias reglas, el
+                            solicitante puede elegir a cualquiera de sus autorizadores.
                             <br/>
                             Los comprobantes cuyo monto sea menor que el mínimo de todas las
                             reglas no requieren aprobación. Los que queden por encima del máximo

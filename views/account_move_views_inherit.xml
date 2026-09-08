@@ -12,6 +12,7 @@
                 <field name="requires_approval" invisible="1"/>
                 <field name="approval_blocked" invisible="1"/>
                 <field name="approval_state" invisible="1"/>
+                <field name="approval_rule_ids" invisible="1"/>
                 <field name="approver_ids" invisible="1"/>
                 <field name="approver_id" invisible="1"/>
                 <field name="approved_by_id" invisible="1"/>
@@ -88,6 +89,8 @@
                         <field name="approver_id" readonly="1"
                             invisible="not approver_id"/>
                         <field name="approver_ids" widget="many2many_tags" readonly="1"/>
+                        <field name="approval_rule_ids" widget="many2many_tags" readonly="1"
+                            invisible="not approval_rule_ids"/>
                     </group>
                     <group>
                         <field name="approved_by_id" readonly="1"

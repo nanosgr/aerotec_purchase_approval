@@ -17,9 +17,12 @@ class AccountMove(models.Model):
         copy=False,
         tracking=True,
     )
-    approval_rule_id = fields.Many2one(
+    approval_rule_ids = fields.Many2many(
         "aerotec.approval.rule",
-        string="Regla aplicable",
+        "account_move_approval_rule_rel",
+        "move_id",
+        "rule_id",
+        string="Reglas aplicables",
         compute="_compute_approval_info",
         store=True,
     )
@@ -81,7 +84,7 @@ class AccountMove(models.Model):
         Rule = self.env["aerotec.approval.rule"]
         for move in self:
             if move.move_type != "in_invoice":
-                move.approval_rule_id = False
+                move.approval_rule_ids = False
                 move.approver_ids = False
                 move.requires_approval = False
                 move.approval_blocked = False
@@ -92,9 +95,8 @@ class AccountMove(models.Model):
                 company=move.company_id,
                 doc_type="invoice",
             )
-            rule = res["rule"]
-            move.approval_rule_id = rule
-            move.approver_ids = rule.user_ids if rule else False
+            move.approval_rule_ids = res["rules"]
+            move.approver_ids = res["users"]
             move.requires_approval = res["status"] == "required"
             move.approval_blocked = res["status"] == "blocked"
 
@@ -152,7 +154,7 @@ class AccountMove(models.Model):
     def _do_request_approval(self, approver, note=False):
         """Registra la solicitud de aprobación asignando un autorizador único."""
         self.ensure_one()
-        if approver not in self.approval_rule_id.user_ids:
+        if approver not in self.approver_ids:
             raise UserError(
                 _("El autorizador seleccionado no está habilitado para esta factura.")
             )
@@ -243,7 +245,7 @@ class AccountMove(models.Model):
                 raise UserError(
                     _("No tiene autorización para aprobar esta factura.")
                 )
-            if move.approver_id not in move.approval_rule_id.user_ids:
+            if move.approver_id not in move.approver_ids:
                 raise UserError(
                     _(
                         "El autorizador asignado ya no está habilitado para el monto "

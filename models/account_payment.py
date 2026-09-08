@@ -17,9 +17,12 @@ class AccountPayment(models.Model):
         copy=False,
         tracking=True,
     )
-    approval_rule_id = fields.Many2one(
+    approval_rule_ids = fields.Many2many(
         "aerotec.approval.rule",
-        string="Regla aplicable",
+        "account_payment_approval_rule_rel",
+        "payment_id",
+        "rule_id",
+        string="Reglas aplicables",
         compute="_compute_approval_info",
         store=True,
     )
@@ -81,7 +84,7 @@ class AccountPayment(models.Model):
         Rule = self.env["aerotec.approval.rule"]
         for payment in self:
             if payment.payment_type != "outbound":
-                payment.approval_rule_id = False
+                payment.approval_rule_ids = False
                 payment.approver_ids = False
                 payment.requires_approval = False
                 payment.approval_blocked = False
@@ -92,9 +95,8 @@ class AccountPayment(models.Model):
                 company=payment.company_id,
                 doc_type="payment",
             )
-            rule = res["rule"]
-            payment.approval_rule_id = rule
-            payment.approver_ids = rule.user_ids if rule else False
+            payment.approval_rule_ids = res["rules"]
+            payment.approver_ids = res["users"]
             payment.requires_approval = res["status"] == "required"
             payment.approval_blocked = res["status"] == "blocked"
 
@@ -152,7 +154,7 @@ class AccountPayment(models.Model):
     def _do_request_approval(self, approver, note=False):
         """Registra la solicitud de aprobación asignando un autorizador único."""
         self.ensure_one()
-        if approver not in self.approval_rule_id.user_ids:
+        if approver not in self.approver_ids:
             raise UserError(
                 _("El autorizador seleccionado no está habilitado para este pago.")
             )
@@ -240,7 +242,7 @@ class AccountPayment(models.Model):
                 raise UserError(
                     _("No tiene autorización para aprobar este pago.")
                 )
-            if payment.approver_id not in payment.approval_rule_id.user_ids:
+            if payment.approver_id not in payment.approver_ids:
                 raise UserError(
                     _(
                         "El autorizador asignado ya no está habilitado para el monto "

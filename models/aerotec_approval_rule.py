@@ -116,50 +116,17 @@ class AerotecApprovalRule(models.Model):
                     )
                 )
 
-    @api.constrains("min_amount", "max_amount", "currency_id", "company_id", "approval_type", "active")
-    def _check_no_overlap(self):
-        today = fields.Date.context_today(self)
-        for rec in self:
-            if not rec.active:
-                continue
-            scope = ["both"] if rec.approval_type == "both" else [rec.approval_type, "both"]
-            others = self.sudo().search(
-                [
-                    ("id", "!=", rec.id),
-                    ("company_id", "=", rec.company_id.id),
-                    ("active", "=", True),
-                    ("approval_type", "in", scope),
-                ]
-            )
-            company = rec.company_id
-            rec_min = rec.min_amount
-            rec_max = rec.max_amount
-            for other in others:
-                # Convertir el rango de la otra regla a la moneda de esta regla.
-                other_min = other.currency_id._convert(
-                    other.min_amount, rec.currency_id, company, today
-                ) if other.min_amount else 0.0
-                other_max = other.currency_id._convert(
-                    other.max_amount, rec.currency_id, company, today
-                )
-                if rec_min < other_max and other_min < rec_max:
-                    raise ValidationError(
-                        _(
-                            "El rango de esta regla se solapa con la regla '%(other)s'. "
-                            "Ajuste los montos para que los rangos no se superpongan.",
-                            other=other.name or "",
-                        )
-                    )
-
     @api.model
     def _evaluate_for_document(self, amount, currency, company, doc_type):
         """Evalúa un comprobante contra las reglas de autorización.
 
         Devuelve un dict con:
         - ``status``: ``'free'`` (no requiere aprobación), ``'required'`` (requiere
-          aprobación según ``rule``) o ``'blocked'`` (queda fuera de todos los rangos
-          configurados y no hay usuario habilitado para autorizarlo).
-        - ``rule``: el recordset de la regla aplicable (vacío salvo en ``'required'``).
+          aprobación) o ``'blocked'`` (queda fuera de todos los rangos configurados y
+          no hay usuario habilitado para autorizarlo).
+        - ``rules``: recordset de todas las reglas cuyo rango contiene el monto (vacío
+          salvo en ``'required'``). Los rangos pueden solaparse.
+        - ``users``: unión de los usuarios autorizadores de esas reglas.
         """
         today = fields.Date.context_today(self)
         rules = self.sudo().search(
@@ -168,20 +135,26 @@ class AerotecApprovalRule(models.Model):
                 ("approval_type", "in", [doc_type, "both"]),
                 ("active", "=", True),
             ],
-            order="max_amount asc",
+            order="min_amount asc, max_amount asc",
         )
+        empty_rules = self.browse()
+        empty_users = self.env["res.users"].browse()
         if not rules:
-            return {"status": "free", "rule": self.browse()}
+            return {"status": "free", "rules": empty_rules, "users": empty_users}
+        matching = empty_rules
         below_all_minimums = True
         for rule in rules:
             converted = currency._convert(
                 amount, rule.currency_id, company, today
             ) if currency else amount
             if rule.min_amount <= converted <= rule.max_amount:
-                return {"status": "required", "rule": rule}
+                matching |= rule
             if converted >= rule.min_amount:
                 below_all_minimums = False
+        if matching:
+            return {"status": "required", "rules": matching, "users": matching.user_ids}
         return {
             "status": "free" if below_all_minimums else "blocked",
-            "rule": self.browse(),
+            "rules": empty_rules,
+            "users": empty_users,
         }
